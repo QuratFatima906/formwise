@@ -9,6 +9,8 @@
  * `sillHeight` from the wall base.
  */
 export type Vec3 = [number, number, number];
+/** Wall-local point: u along the wall from its start, v up from its base. */
+export type Point2 = [number, number];
 export type RoofSide = 'S' | 'E' | 'N' | 'W';
 export type OpeningType = 'window' | 'door';
 
@@ -29,8 +31,15 @@ export interface WallElement extends BaseElement {
   type: 'wall';
   start: Vec3;
   end: Vec3;
+  /** Clear rectangular height: openings must fit below it. */
   height: number;
   thickness: number;
+  /**
+   * Exact face outline (e.g. a gable) for imported walls, in wall-local
+   * coordinates with u ∈ [0, length], v ≥ 0. It contains the rectangle
+   * length × height; the face area is the polygon area. Absent = rectangle.
+   */
+  profile?: Point2[];
 }
 
 export interface OpeningElement extends BaseElement {
@@ -43,18 +52,27 @@ export interface OpeningElement extends BaseElement {
   height: number;
 }
 
-/** Hipped-roof face; its polygon is derived from the top storey's walls. */
+/**
+ * Roof face. Without `polygon` it is a face of the hipped roof derived from
+ * the top storey's walls; imported roofs carry their exterior ring (CCW seen
+ * from outside) in `polygon`.
+ */
 export interface RoofElement extends BaseElement {
   type: 'roof';
   face: RoofSide;
   thickness: number;
   pitch: number;
+  polygon?: Vec3[];
 }
 
-/** Ground slab; its outline is the ground storey's wall bounding box. */
+/**
+ * Ground slab. Without `polygon` its outline is the storey's wall bounding
+ * box; imported slabs carry their top-face ring in `polygon`.
+ */
 export interface SlabElement extends BaseElement {
   type: 'slab';
   thickness: number;
+  polygon?: Vec3[];
 }
 
 export type BuildingElement = WallElement | OpeningElement | RoofElement | SlabElement;
@@ -79,6 +97,12 @@ export const EDITABLE_FIELDS = {
 } as const satisfies Record<ElementType, readonly string[]>;
 
 export type NumericField = (typeof EDITABLE_FIELDS)[ElementType][number];
+
+/** Fields the inspector may edit; a profiled wall's height comes from its geometry. */
+export function editableFields(e: BuildingElement): readonly NumericField[] {
+  if (e.type === 'wall' && e.profile) return ['thickness', 'uValue'];
+  return EDITABLE_FIELDS[e.type];
+}
 
 const SIDES: [RoofSide, string][] = [
   ['S', 'South'],

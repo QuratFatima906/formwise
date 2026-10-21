@@ -6,16 +6,19 @@ export const STORAGE_KEY = 'formwise.project.sample-house.v1';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isVec3 = (v: unknown) => Array.isArray(v) && v.length === 3 && v.every(isNum);
+const isPoint2 = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every(isNum);
+/** Optional ring: absent, or ≥ 3 points of the given shape. */
+const isRing = (v: unknown, point: (p: unknown) => boolean) => v === undefined || (Array.isArray(v) && v.length >= 3 && v.every(point));
 
 function isElement(e: unknown): e is BuildingElement {
   if (typeof e !== 'object' || e === null) return false;
   const x = e as Record<string, unknown>;
   if (!isStr(x.id) || !isStr(x.storeyId) || !isStr(x.name) || !isNum(x.uValue)) return false;
   switch (x.type) {
-    case 'wall': return isVec3(x.start) && isVec3(x.end) && isNum(x.height) && isNum(x.thickness);
+    case 'wall': return isVec3(x.start) && isVec3(x.end) && isNum(x.height) && isNum(x.thickness) && isRing(x.profile, isPoint2);
     case 'opening': return isStr(x.hostWallId) && (x.openingType === 'window' || x.openingType === 'door') && [x.offset, x.sillHeight, x.width, x.height].every(isNum);
-    case 'roof': return ['S', 'E', 'N', 'W'].includes(x.face as string) && isNum(x.thickness) && isNum(x.pitch);
-    case 'slab': return isNum(x.thickness);
+    case 'roof': return ['S', 'E', 'N', 'W'].includes(x.face as string) && isNum(x.thickness) && isNum(x.pitch) && isRing(x.polygon, isVec3);
+    case 'slab': return isNum(x.thickness) && isRing(x.polygon, isVec3);
     default: return false;
   }
 }

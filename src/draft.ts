@@ -1,5 +1,5 @@
 import type { BuildingElement, BuildingModel, NumericField, OpeningElement, OpeningType } from './domain/model';
-import { EDITABLE_FIELDS } from './domain/model';
+import { editableFields } from './domain/model';
 import { EPS, openingsOf, wallLength } from './domain/geometry';
 import { f2, FIELD_META, proposeEdit, type Issue } from './domain/validate';
 
@@ -41,7 +41,7 @@ export function parseDecimal(raw: string): number | null {
 
 export function evaluateDraft(model: BuildingModel, draft: Draft): DraftResult {
   const el = { ...draft.base } as BuildingElement & Record<string, unknown>;
-  const fields = EDITABLE_FIELDS[el.type] as readonly NumericField[];
+  const fields = editableFields(draft.base);
   const changes: DraftResult['changes'] = [];
   const parseErrors: Partial<Record<NumericField, FieldMessage>> = {};
 

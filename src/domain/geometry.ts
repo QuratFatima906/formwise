@@ -1,4 +1,4 @@
-import type { BuildingElement, BuildingModel, ElementKind, OpeningElement, RoofSide, Vec3, WallElement } from './model';
+import type { BuildingElement, BuildingModel, ElementKind, OpeningElement, Point2, RoofElement, RoofSide, Vec3, WallElement } from './model';
 import { kindOf } from './model';
 
 export const EPS = 1e-6;
@@ -46,6 +46,15 @@ export function roofFaces(m: BuildingModel): { faces: Partial<Record<RoofSide, V
   return { faces: { S: [sw, se, r2, r1], E: [se, ne, r2], N: [ne, nw, r1, r2], W: [nw, sw, r1] }, eave, ridge };
 }
 
+/** A roof face's polygon: imported, else the derived hipped face. */
+export const roofPolygon = (m: BuildingModel, e: RoofElement): Vec3[] | undefined => e.polygon ?? roofFaces(m).faces[e.face];
+
+/** Lowest point of a roof face (its eave). */
+export function roofEave(m: BuildingModel, e: RoofElement): number {
+  const p = roofPolygon(m, e);
+  return p ? Math.min(...p.map((q) => q[2])) : 0;
+}
+
 /** Area of a planar 3D polygon (Newell's method). */
 export function polygonArea(p: Vec3[]): number {
   let x = 0, y = 0, z = 0;
@@ -65,9 +74,9 @@ export interface WallAreas {
   net: number;
 }
 
-/** Gross face area (length × height), opening area, and net opaque area. */
+/** Gross face area (profile area, else length × height), opening area, and net opaque area. */
 export function wallAreas(m: BuildingModel, w: WallElement): WallAreas {
-  const gross = wallLength(w) * w.height;
+  const gross = w.profile ? polygonArea2(w.profile) : wallLength(w) * w.height;
   const os = openingsOf(m, w.id);
   const openings = os.reduce((s, o) => s + openingArea(o), 0);
   return { gross, openings, openingCount: os.length, net: gross - openings };
@@ -83,10 +92,11 @@ export function envelopeArea(m: BuildingModel, e: BuildingElement): number {
     case 'wall': return wallAreas(m, e).net;
     case 'opening': return openingArea(e);
     case 'roof': {
-      const p = roofFaces(m).faces[e.face];
+      const p = roofPolygon(m, e);
       return p ? polygonArea(p) : 0;
     }
     case 'slab': {
+      if (e.polygon) return polygonArea(e.polygon);
       const b = storeyBounds(m, e.storeyId);
       return b ? (b.x1 - b.x0) * (b.y1 - b.y0) : 0;
     }
@@ -141,8 +151,6 @@ export function heatLossSummary(m: BuildingModel): HeatLossSummary {
 
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 
-export type Point2 = [number, number];
-
 /**
  * Wall elevation outline in wall-local 2D coordinates (u along the wall from
  * its start, v up from its base), ready for extrusion through the thickness.
@@ -156,6 +164,13 @@ export function wallOutline(w: WallElement, openings: OpeningElement[]): { outer
     .filter((o) => o.width > 0 && o.height > 0 && o.offset >= -EPS && o.offset + o.width <= L + EPS && o.sillHeight >= 0 && o.sillHeight + o.height <= H + EPS)
     .sort((a, b) => a.offset - b.offset);
   const atBase = (o: OpeningElement) => o.sillHeight <= EPS;
+  const rect = (o: OpeningElement): Point2[] => [
+    [o.offset, o.sillHeight],
+    [o.offset, o.sillHeight + o.height],
+    [o.offset + o.width, o.sillHeight + o.height],
+    [o.offset + o.width, o.sillHeight],
+  ];
+  if (w.profile) return profiledOutline(w.profile, fits.filter(atBase), fits.filter((o) => !atBase(o)).map(rect));
   const atTop = (o: OpeningElement) => !atBase(o) && o.sillHeight + o.height >= H - EPS;
 
   const outer: Point2[] = [[0, 0]];
@@ -168,14 +183,30 @@ export function wallOutline(w: WallElement, openings: OpeningElement[]): { outer
   }
   outer.push([0, H]);
 
-  const holes = fits
-    .filter((o) => !atBase(o) && !atTop(o))
-    .map((o): Point2[] => [
-      [o.offset, o.sillHeight],
-      [o.offset, o.sillHeight + o.height],
-      [o.offset + o.width, o.sillHeight + o.height],
-      [o.offset + o.width, o.sillHeight],
-    ]);
+  const holes = fits.filter((o) => !atBase(o) && !atTop(o)).map(rect);
+  return { outer, holes };
+}
+
+/**
+ * Outline for a profiled wall: base openings become notches in whichever
+ * bottom (v = 0) edge contains them; all other openings are holes.
+ */
+function profiledOutline(profile: Point2[], base: OpeningElement[], holes: Point2[][]) {
+  // ponytail: an opening reaching exactly the profile's top edge makes a hole that
+  // touches the outline, which can mis-triangulate visually (areas stay correct).
+  const outer: Point2[] = [];
+  profile.forEach((a, i) => {
+    const b = profile[(i + 1) % profile.length]!;
+    outer.push(a);
+    if (Math.abs(a[1]) > EPS || Math.abs(b[1]) > EPS) return;
+    const lo = Math.min(a[0], b[0]), hi = Math.max(a[0], b[0]), forward = b[0] > a[0];
+    const inEdge = base.filter((o) => o.offset >= lo - EPS && o.offset + o.width <= hi + EPS);
+    if (!forward) inEdge.reverse();
+    for (const o of inEdge) {
+      const [u0, u1] = forward ? [o.offset, o.offset + o.width] : [o.offset + o.width, o.offset];
+      outer.push([u0, 0], [u0, o.height], [u1, o.height], [u1, 0]);
+    }
+  });
   return { outer, holes };
 }
 

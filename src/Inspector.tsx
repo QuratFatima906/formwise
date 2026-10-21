@@ -1,6 +1,6 @@
 import type { BuildingElement, BuildingModel, NumericField } from './domain/model';
-import { EDITABLE_FIELDS, kindOf } from './domain/model';
-import { envelopeArea, openingsOf, roofFaces, wallAreas, wallLength } from './domain/geometry';
+import { editableFields, kindOf } from './domain/model';
+import { envelopeArea, openingsOf, roofEave, wallAreas, wallLength } from './domain/geometry';
 import { f2, FIELD_META, validate } from './domain/validate';
 import { parseDecimal } from './draft';
 import { KIND_COLOR } from './scene';
@@ -26,7 +26,7 @@ export function Inspector() {
   const el = shown.elements[base.id] ?? base;
   const committed = model.elements[base.id];
   const kind = kindOf(base);
-  const fields = EDITABLE_FIELDS[base.type] as readonly NumericField[];
+  const fields = editableFields(base);
   const num = (e: BuildingElement, k: NumericField) => (e as unknown as Record<string, number>)[k]!;
   const storey = model.storeys.find((s) => s.id === base.storeyId);
 
@@ -178,6 +178,7 @@ function derivedRows(model: BuildingModel, shown: BuildingModel, el: BuildingEle
     const a = wallAreas(shown, el), b = c?.type === 'wall' ? wallAreas(model, c) : undefined;
     return [
       row('Length', f2(wallLength(el)), 'm'),
+      ...(el.profile ? [row('Clear height (imported)', f2(el.height), 'm')] : []),
       row('Gross area', f2(a.gross), 'm²', b && f2(b.gross)),
       row(`Openings (${a.openingCount})`, f2(a.openings), 'm²', b && f2(b.openings)),
       row('Net opaque area', f2(a.net), 'm²', b && f2(b.net)),
@@ -199,7 +200,7 @@ function derivedRows(model: BuildingModel, shown: BuildingModel, el: BuildingEle
   }
   const a = envelopeArea(shown, el), before = c && f2(envelopeArea(model, c) * c.uValue);
   if (el.type === 'roof') {
-    return [row('Area', f2(a), 'm²'), row('Pitch', f2(el.pitch, 0), '°'), row('Eave height', f2(roofFaces(shown).eave), 'm'), row('U · A', f2(a * el.uValue), 'W/K', before)];
+    return [row('Area', f2(a), 'm²'), row('Pitch', f2(el.pitch, 0), '°'), row('Eave height', f2(roofEave(shown, el)), 'm'), row('U · A', f2(a * el.uValue), 'W/K', before)];
   }
   return [row('Area (footprint)', f2(a), 'm²'), row('U · A', f2(a * el.uValue), 'W/K', before)];
 }

@@ -40,6 +40,18 @@ describe('parseModel', () => {
     expect(parseModel(JSON.parse(JSON.stringify(m)))).toEqual(m);
   });
 
+  it('accepts optional profiles and polygons, rejects malformed ones', () => {
+    const m = JSON.parse(JSON.stringify(sampleHouse()));
+    m.elements['WL-EG-S'].profile = [[0, 0], [10, 0], [10, 2.75], [0, 2.75]];
+    m.elements['SL-01'].polygon = [[0, 0, 0], [10, 0, 0], [10, 8, 0], [0, 8, 0]];
+    expect(parseModel(m)).not.toBeNull();
+    m.elements['SL-01'].polygon = [[0, 0, 0], [10, 0, 0]];
+    expect(parseModel(m)).toBeNull();
+    m.elements['SL-01'].polygon = undefined;
+    m.elements['WL-EG-S'].profile = [[0, 0, 0], [1, 0, 0], [1, 1, 0]];
+    expect(parseModel(m)).toBeNull();
+  });
+
   it('rejects malformed data', () => {
     const m = JSON.parse(JSON.stringify(sampleHouse()));
     expect(parseModel(null)).toBeNull();
