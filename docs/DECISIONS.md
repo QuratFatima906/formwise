@@ -33,3 +33,7 @@ typescript-eslint does not support TypeScript 7 yet (`typescript-eslint does not
 ## 8. Bundle size accepted for now
 
 The production main chunk is ~840 KB before gzip, mostly Three.js. `GLTFExporter` is already lazy-loaded on export. Not split further until load time is measured to matter.
+
+## 9. Strict file input, 1 MB cap
+
+Open… accepts only Formwise project files (`{"format": "formwise.project", "version": 1, "model": …}`). The picker's `accept` attribute is a hint users can bypass, so `checkFileMeta()` enforces extension, MIME type and size (≤ 1 MB, checked before reading). `parseImportBytes()` then requires strict UTF-8, JSON, the known format/version, and `parseModel()`'s exact shape (now also checking unique storey IDs and that every element's storey exists), with 1–2000 elements. 1 MB is about 100× the sample project. Raise it with a measured need. Unknown versions are rejected rather than guessed. CityJSON follows as a separate importer behind the same gate.

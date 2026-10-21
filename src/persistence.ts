@@ -30,8 +30,10 @@ export function parseModel(data: unknown): BuildingModel | null {
     return typeof s === 'object' && s !== null && isStr(x.id) && isStr(x.name) && isNum(x.elevation);
   });
   if (!storeysOk || !d.storeys.length) return null;
+  const storeyIds = new Set(d.storeys.map((s: Storey) => s.id));
+  if (storeyIds.size !== d.storeys.length) return null;
   const entries = Object.entries(d.elements as Record<string, unknown>);
-  if (!entries.every(([k, e]) => isElement(e) && e.id === k)) return null;
+  if (!entries.every(([k, e]) => isElement(e) && e.id === k && storeyIds.has(e.storeyId))) return null;
   return { name: d.name, storeys: d.storeys as Storey[], elements: Object.fromEntries(entries) as Record<string, BuildingElement> };
 }
 

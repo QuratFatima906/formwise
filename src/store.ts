@@ -13,6 +13,8 @@ interface EditorState {
   saved: BuildingModel | null;
   savedAt: string;
   saveError: string;
+  /** Where the current model came from, shown next to the project name. */
+  source: string;
   exportOpen: boolean;
   selectedId: string | null;
   hoverId: string | null;
@@ -38,6 +40,7 @@ interface EditorState {
   flash: (text: string, tone: Tone) => void;
   save: () => void;
   resetToSample: () => void;
+  importModel: (model: BuildingModel, fileName: string) => void;
   setExportOpen: (open: boolean) => void;
   setNav: (nav: NavMode) => void;
   toggleNode: (key: string, current: boolean) => void;
@@ -54,6 +57,7 @@ export const useEditor = create<EditorState>()((set, get) => ({
   saved: startup.status === 'loaded' ? initialModel : null,
   savedAt: '',
   saveError: '',
+  source: startup.status === 'loaded' ? 'Stored in this browser' : 'Bundled sample',
   exportOpen: false,
   selectedId: null,
   hoverId: null,
@@ -145,12 +149,16 @@ export const useEditor = create<EditorState>()((set, get) => ({
       get().flash('Save failed — your changes are still in this tab.', 'error');
       return;
     }
-    set({ saved: model, savedAt: clock(), saveError: '' });
+    set({ saved: model, savedAt: clock(), saveError: '', source: 'Stored in this browser' });
     get().flash(`Project saved in this browser at ${clock()}.`, 'ok');
   },
   resetToSample: () => {
-    set({ model: sampleHouse(), draft: null, selectedId: null, lastApplied: null, confirmDelete: false });
+    set({ model: sampleHouse(), draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: 'Bundled sample' });
     get().flash('Loaded the bundled sample. Save to replace the stored project.', 'warn');
+  },
+  importModel: (model, fileName) => {
+    set({ model, draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: `Imported · ${fileName}` });
+    get().flash(`Opened ${fileName}. Save to keep it in this browser.`, 'ok');
   },
   setExportOpen: (exportOpen) => set({ exportOpen }),
   setNav: (nav) => set({ nav }),

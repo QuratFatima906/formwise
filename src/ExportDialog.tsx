@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { heatLossSummary } from './domain/geometry';
 import { f2 } from './domain/validate';
 import { download, modelGlb, summaryCsv, summaryJson } from './export';
+import { projectFile } from './importFile';
 import { currentDraft, useEditor } from './store';
 
-type Format = 'glb' | 'csv' | 'json';
+type Format = 'project' | 'glb' | 'csv' | 'json';
 interface Written { name: string; ok: boolean; size: string; detail: string }
 
-const OPTIONS: { key: Format; label: string; desc: string }[] = [
-  { key: 'glb', label: 'glTF 2.0 scene', desc: 'Model geometry. Meshes named by element ID; type stored in extras.' },
-  { key: 'csv', label: 'Summary table', desc: 'One row per envelope element: type, ID, storey, area, U-value, U·A.' },
-  { key: 'json', label: 'Summary data', desc: 'Same rows plus units, method note and totals.' },
+const OPTIONS: { key: Format; label: string; desc: string; ext: string }[] = [
+  { key: 'project', label: 'Project file', desc: 'Full editable model; reopen it with Open….', ext: '.formwise.json' },
+  { key: 'glb', label: 'glTF 2.0 scene', desc: 'Model geometry. Meshes named by element ID; type stored in extras.', ext: '.glb' },
+  { key: 'csv', label: 'Summary table', desc: 'One row per envelope element: type, ID, storey, area, U-value, U·A.', ext: '.csv' },
+  { key: 'json', label: 'Summary data', desc: 'Same rows plus units, method note and totals.', ext: '.json' },
 ];
-const BASE = 'formwise-sample-house';
-const fileName = (f: Format) => (f === 'glb' ? `${BASE}.glb` : `${BASE}-summary.${f}`);
+const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project';
+const fileName = (base: string, f: Format) =>
+  f === 'project' ? `${base}.formwise.json` : f === 'glb' ? `${base}.glb` : `${base}-summary.${f}`;
 const size = (b: Blob) => (b.size < 1024 ? `${b.size} B` : `${(b.size / 1024).toFixed(1)} KB`);
 
 export function ExportDialog() {
@@ -21,7 +24,8 @@ export function ExportDialog() {
   const draft = useEditor((s) => s.draft);
   const d = useEditor(currentDraft);
   const close = () => useEditor.getState().setExportOpen(false);
-  const [sel, setSel] = useState<Record<Format, boolean>>({ glb: true, csv: true, json: false });
+  const [sel, setSel] = useState<Record<Format, boolean>>({ project: false, glb: true, csv: true, json: false });
+  const base = `formwise-${slug(model.name)}`;
   const [phase, setPhase] = useState<'idle' | 'running' | 'done'>('idle');
   const [written, setWritten] = useState<Written[]>([]);
   const sum = heatLossSummary(model);
@@ -33,15 +37,16 @@ export function ExportDialog() {
     for (const f of chosen) {
       try {
         const blob =
-          f === 'glb' ? new Blob([await modelGlb(model)], { type: 'model/gltf-binary' })
+          f === 'project' ? new Blob([projectFile(model)], { type: 'application/json' })
+          : f === 'glb' ? new Blob([await modelGlb(model)], { type: 'model/gltf-binary' })
           : f === 'csv' ? new Blob([summaryCsv(model)], { type: 'text/csv' })
           : new Blob([summaryJson(model, new Date())], { type: 'application/json' });
-        download(fileName(f), blob);
-        const detail = f === 'glb' ? `${Object.keys(model.elements).length} elements · names = element IDs`
+        download(fileName(base, f), blob);
+        const detail = f === 'project' ? 'Editable model · reopen with Open…' : f === 'glb' ? `${Object.keys(model.elements).length} elements · names = element IDs`
           : f === 'csv' ? `${sum.rows.length} rows + total · H_T ${f2(sum.total, 1)} W/K` : 'Elements, units and totals';
-        out.push({ name: fileName(f), ok: true, size: size(blob), detail });
+        out.push({ name: fileName(base, f), ok: true, size: size(blob), detail });
       } catch (e) {
-        out.push({ name: fileName(f), ok: false, size: '', detail: `Not written: ${(e as Error).message}` });
+        out.push({ name: fileName(base, f), ok: false, size: '', detail: `Not written: ${(e as Error).message}` });
       }
     }
     setWritten(out);
@@ -67,7 +72,7 @@ export function ExportDialog() {
                 <label key={o.key} className="option clickable-row">
                   <input type="checkbox" checked={sel[o.key]} onChange={() => setSel((s) => ({ ...s, [o.key]: !s[o.key] }))} />
                   <div><div style={{ fontSize: 12.5, fontWeight: 500 }}>{o.label}</div><div className="v-sub">{o.desc}</div></div>
-                  <span className="mono muted" style={{ fontSize: 11 }}>.{o.key}</span>
+                  <span className="mono muted" style={{ fontSize: 11 }}>{o.ext}</span>
                 </label>
               ))}
             </div>
