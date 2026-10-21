@@ -40,6 +40,7 @@
 html, body, #root { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 13px/1.35 var(--sans); }
 button, input { font: inherit; color: inherit; }
+sub { line-height: 0; font-size: 9px; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
