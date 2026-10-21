@@ -35,7 +35,7 @@ describe('parseImportBytes', () => {
   });
 
   it('rejects unknown formats and versions', () => {
-    expect(errorOf(parseImportBytes(bytes('{"name":"x"}')))).toMatch(/expected "format": "formwise.project"/);
+    expect(errorOf(parseImportBytes(bytes('{"name":"x"}')))).toMatch(/expected a Formwise project/);
     const v2 = JSON.parse(projectFile(sampleHouse()));
     v2.version = 2;
     expect(errorOf(parseImportBytes(bytes(JSON.stringify(v2))))).toMatch(/version 2 is not supported/);
@@ -53,7 +53,7 @@ describe('parseImportBytes', () => {
   it('rejects empty and oversized element sets', () => {
     const f = JSON.parse(projectFile(sampleHouse()));
     f.model.elements = {};
-    expect(errorOf(parseImportBytes(bytes(JSON.stringify(f))))).toMatch(/no elements/);
+    expect(errorOf(parseImportBytes(bytes(JSON.stringify(f))))).toMatch(/no building elements/);
     const slab = f.model.elements;
     for (let i = 0; i <= MAX_IMPORT_ELEMENTS; i++) slab[`S${i}`] = { id: `S${i}`, type: 'slab', storeyId: 'EG', name: 's', thickness: 0.2, uValue: 1 };
     expect(errorOf(parseImportBytes(bytes(JSON.stringify(f))))).toMatch(/2001 elements; the limit is 2000/);

@@ -42,7 +42,7 @@ export function ImportDialog({ fileName, result, onClose }: Props) {
           {result && !result.ok && (
             <div className="notice error" role="alert" style={{ marginTop: 0 }}>
               Not opened. {result.error}
-              <div className="notice-hint">Accepted: Formwise project files (.formwise.json, JSON, UTF-8, up to {MAX_IMPORT_BYTES / 1024 / 1024} MB).</div>
+              <div className="notice-hint">Accepted: Formwise project files (.formwise.json) and CityJSON 1.1/2.0 LOD2, one building (.city.json) — UTF-8 JSON, up to {MAX_IMPORT_BYTES / 1024 / 1024} MB.</div>
             </div>
           )}
           {result?.ok && <Summary result={result} unsaved={unsaved} />}
@@ -58,11 +58,13 @@ export function ImportDialog({ fileName, result, onClose }: Props) {
 }
 
 function Summary({ result, unsaved }: { result: Extract<ImportResult, { ok: true }>; unsaved: boolean }) {
-  const { model, issues, warnings } = result;
+  const { model, issues, warnings, format } = result;
   const els = Object.values(model.elements);
   const count = (k: string) => els.filter((e) => kindOf(e) === k).length;
   const rows: [string, string][] = [
+    ['Format', format === 'cityjson' ? 'CityJSON (LOD2)' : 'Formwise project'],
     ['Project', model.name],
+    ...(model.origin ? [['Source CRS', model.origin.crs?.split('/').slice(-3).join(':') ?? 'not stated'] as [string, string], ['Local origin', model.origin.offset.map((v) => f2(v)).join(', ')] as [string, string]] : []),
     ['Storeys', String(model.storeys.length)],
     ['Walls · windows · doors', `${count('wall')} · ${count('window')} · ${count('door')}`],
     ['Roof faces · slabs', `${count('roof')} · ${count('slab')}`],

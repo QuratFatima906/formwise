@@ -1,4 +1,4 @@
-import type { BuildingElement, BuildingModel, Storey } from './domain/model';
+import type { BuildingElement, BuildingModel, Storey, Vec3 } from './domain/model';
 
 /** Projects persist to this browser's localStorage only — no backend yet. */
 export const STORAGE_KEY = 'formwise.project.sample-house.v1';
@@ -37,7 +37,11 @@ export function parseModel(data: unknown): BuildingModel | null {
   if (storeyIds.size !== d.storeys.length) return null;
   const entries = Object.entries(d.elements as Record<string, unknown>);
   if (!entries.every(([k, e]) => isElement(e) && e.id === k && storeyIds.has(e.storeyId))) return null;
-  return { name: d.name, storeys: d.storeys as Storey[], elements: Object.fromEntries(entries) as Record<string, BuildingElement> };
+  const o = d.origin as Record<string, unknown> | undefined;
+  if (o !== undefined && !(typeof o === 'object' && o !== null && (o.crs === null || isStr(o.crs)) && isVec3(o.offset))) return null;
+  const model: BuildingModel = { name: d.name, storeys: d.storeys as Storey[], elements: Object.fromEntries(entries) as Record<string, BuildingElement> };
+  if (o) model.origin = { crs: o.crs as string | null, offset: o.offset as Vec3 };
+  return model;
 }
 
 export type LoadResult = { status: 'none' } | { status: 'loaded'; model: BuildingModel } | { status: 'corrupt' | 'unavailable'; reason: string };

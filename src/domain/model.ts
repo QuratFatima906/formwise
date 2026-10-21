@@ -84,6 +84,8 @@ export interface BuildingModel {
   name: string;
   storeys: Storey[];
   elements: Record<string, BuildingElement>;
+  /** Imported models: source CRS and the offset subtracted to get local metres. */
+  origin?: { crs: string | null; offset: Vec3 };
 }
 
 export const kindOf = (e: BuildingElement): ElementKind => (e.type === 'opening' ? e.openingType : e.type);
