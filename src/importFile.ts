@@ -1,6 +1,7 @@
 import type { BuildingModel } from './domain/model';
 import { validate } from './domain/validate';
 import { parseModel } from './persistence';
+import { parseCityJson } from './cityjson';
 
 export const MAX_IMPORT_BYTES = 1024 * 1024;
 export const MAX_IMPORT_ELEMENTS = 2000;
@@ -13,7 +14,7 @@ export const PROJECT_VERSION = 1;
 const ACCEPTED_MIME = new Set(['', 'application/json', 'text/json']);
 
 export type ImportResult =
-  | { ok: true; format: 'formwise'; model: BuildingModel; issues: number; warnings: string[] }
+  | { ok: true; format: 'formwise' | 'cityjson'; model: BuildingModel; issues: number; warnings: string[] }
   | { ok: false; error: string };
 
 const fail = (error: string): ImportResult => ({ ok: false, error });
@@ -21,7 +22,7 @@ const byteCount = (n: number) => `${n.toLocaleString('en-US')} bytes`;
 
 /** Checks name, size and MIME type before any bytes are read. Returns an error or null. */
 export function checkFileMeta(name: string, size: number, type: string): string | null {
-  if (!name.toLowerCase().endsWith('.json')) return `“${name}” is not a .json file. Formwise opens Formwise project files (.formwise.json).`;
+  if (!name.toLowerCase().endsWith('.json')) return `“${name}” is not a .json file. Formwise opens project files (.formwise.json) and CityJSON (.city.json).`;
   if (!ACCEPTED_MIME.has(type)) return `“${name}” has type ${type}, not JSON.`;
   if (size === 0) return `“${name}” is empty.`;
   if (size > MAX_IMPORT_BYTES) return `“${name}” is ${byteCount(size)}; the limit is 1 MB (${byteCount(MAX_IMPORT_BYTES)}).`;
@@ -45,14 +46,23 @@ export function parseImportBytes(bytes: ArrayBuffer): ImportResult {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return fail('The file must contain a JSON object.');
   const d = data as Record<string, unknown>;
 
-  if (d.format !== PROJECT_FORMAT) return fail(`Unrecognised file: expected "format": "${PROJECT_FORMAT}".`);
+  if (d.type === 'CityJSONFeature') return fail('CityJSON feature streams (.city.jsonl) are not supported; open a complete CityJSON file.');
+  if (d.type === 'CityJSON') {
+    const r = parseCityJson(d);
+    return r.ok ? accept('cityjson', r.model, r.warnings) : fail(r.error);
+  }
+  if (d.format !== PROJECT_FORMAT) return fail(`Unrecognised file: expected a Formwise project ("format": "${PROJECT_FORMAT}") or CityJSON ("type": "CityJSON").`);
   if (d.version !== PROJECT_VERSION) return fail(`Project file version ${String(d.version)} is not supported; this app reads version ${PROJECT_VERSION}.`);
   const model = parseModel(d.model);
   if (!model) return fail('The project data is malformed: missing fields, wrong types, duplicate IDs or unknown storeys.');
+  return accept('formwise', model, []);
+}
+
+function accept(format: 'formwise' | 'cityjson', model: BuildingModel, warnings: string[]): ImportResult {
   const n = Object.keys(model.elements).length;
-  if (n === 0) return fail('The project contains no elements.');
-  if (n > MAX_IMPORT_ELEMENTS) return fail(`The project has ${n} elements; the limit is ${MAX_IMPORT_ELEMENTS}.`);
-  return { ok: true, format: 'formwise', model, issues: validate(model).length, warnings: [] };
+  if (n === 0) return fail('The file contains no building elements.');
+  if (n > MAX_IMPORT_ELEMENTS) return fail(`The model has ${n} elements; the limit is ${MAX_IMPORT_ELEMENTS}.`);
+  return { ok: true, format, model, issues: validate(model).length, warnings };
 }
 
 export async function readImportFile(file: File): Promise<ImportResult> {

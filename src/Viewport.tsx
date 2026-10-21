@@ -18,18 +18,44 @@ interface Props {
   children?: ReactNode;
 }
 
-const HOME_TARGET = new THREE.Vector3(5, 3.1, -4);
-const HOME_POSITION = new THREE.Vector3().setFromSphericalCoords(31, 1.2, 0.58).add(HOME_TARGET);
-
 interface Three {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   render: () => void;
+  sun: THREE.DirectionalLight;
+  ground: THREE.Mesh;
+  grid?: THREE.GridHelper;
+  bounds: THREE.Box3;
   building?: THREE.Group;
   parts: Record<string, Part[]>;
   pickables: THREE.Object3D[];
+}
+
+/** Home view: the design's 3/4 angle, at a distance proportional to the building's size. */
+function homeView(bounds: THREE.Box3) {
+  const target = bounds.getCenter(new THREE.Vector3());
+  const radius = Math.max(8, bounds.getSize(new THREE.Vector3()).length() * 2.05);
+  return { target, position: new THREE.Vector3().setFromSphericalCoords(radius, 1.2, 0.58).add(target) };
+}
+
+/** Moves the grid, ground and sun shadow frustum to sit under and around the building. */
+function frameStage(t: Three) {
+  const c = t.bounds.getCenter(new THREE.Vector3()), r = t.bounds.getSize(new THREE.Vector3()).length() / 2;
+  const size = Math.max(40, Math.ceil(r * 6));
+  if (t.grid?.userData.size !== size) {
+    if (t.grid) { t.scene.remove(t.grid); disposeGroup(t.grid); }
+    t.grid = new THREE.GridHelper(size, size, 0xc9c5bc, 0xdcd9d2); // 1 m cells
+    t.grid.userData.size = size;
+    t.scene.add(t.grid);
+  }
+  t.grid.position.set(Math.round(c.x), t.bounds.min.y - 0.005, Math.round(c.z));
+  t.ground.position.set(c.x, t.bounds.min.y - 0.01, c.z);
+  t.sun.target.position.set(c.x, t.bounds.min.y, c.z);
+  t.sun.position.copy(c).add(new THREE.Vector3(13, 23, 18).multiplyScalar(Math.max(1, r / 8)));
+  Object.assign(t.sun.shadow.camera, { left: -r * 1.6, right: r * 1.6, top: r * 1.6, bottom: -r * 1.6, near: 1, far: r * 12 + 60 });
+  t.sun.shadow.camera.updateProjectionMatrix();
 }
 
 export function Viewport({ model, ghost, ref, children }: Props) {
@@ -42,11 +68,16 @@ export function Viewport({ model, ghost, ref, children }: Props) {
   const nav = useEditor((s) => s.nav);
   const setNav = useEditor((s) => s.setNav);
 
+  const source = useEditor((s) => s.source);
+  const fittedSource = useRef<string | null>(null);
+
   const fit = () => {
     const t = three.current;
-    if (!t) return;
-    t.camera.position.copy(HOME_POSITION);
-    t.controls.target.copy(HOME_TARGET);
+    if (!t || t.bounds.isEmpty()) return;
+    const home = homeView(t.bounds);
+    t.camera.position.copy(home.position);
+    t.controls.target.copy(home.target);
+    t.controls.maxDistance = Math.max(120, home.position.distanceTo(home.target) * 4);
     t.controls.update();
   };
   const zoom = (f: number) => {
@@ -79,28 +110,19 @@ export function Viewport({ model, ghost, ref, children }: Props) {
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 500);
     scene.add(new THREE.HemisphereLight(0xffffff, 0xa9a49a, 1.25));
     const sun = new THREE.DirectionalLight(0xfffaf0, 2.1);
-    sun.position.set(18, 26, 14);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 80 });
     sun.shadow.bias = -0.0005;
-    sun.target.position.set(5, 0, -4);
     scene.add(sun, sun.target);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.18 }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.ShadowMaterial({ opacity: 0.18 }));
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.26;
     ground.receiveShadow = true;
     scene.add(ground);
-    const grid = new THREE.GridHelper(40, 40, 0xc9c5bc, 0xdcd9d2);
-    grid.position.set(5, -0.255, -4);
-    scene.add(grid);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.maxPolarAngle = 1.5;
     controls.minDistance = 6;
     controls.maxDistance = 120;
-    camera.position.copy(HOME_POSITION);
-    controls.target.copy(HOME_TARGET);
 
     let frame = 0;
     const render = () => {
@@ -159,7 +181,7 @@ export function Viewport({ model, ghost, ref, children }: Props) {
     cv.addEventListener('pointermove', onMove);
     cv.addEventListener('pointerleave', onLeave);
 
-    three.current = { renderer, scene, camera, controls, render, parts: {}, pickables: [] };
+    three.current = { renderer, scene, camera, controls, render, sun, ground, bounds: new THREE.Box3(), parts: {}, pickables: [] };
     setStatus('ready');
 
     return () => {
@@ -190,10 +212,17 @@ export function Viewport({ model, ghost, ref, children }: Props) {
     t.parts = parts;
     t.pickables = Object.values(parts).flatMap((ps) => ps.map((p) => p.mesh));
     t.scene.add(group);
+    t.bounds = new THREE.Box3().setFromObject(group);
+    frameStage(t);
+    // Re-frame the camera when a different model is loaded, not on every edit.
+    if (fittedSource.current !== source) {
+      fittedSource.current = source;
+      fit();
+    }
     const { selectedId: sel, hoverId: hov } = useEditor.getState();
     paintSelection(parts, sel, hov);
     t.render();
-  }, [model, ghost, status]);
+  }, [model, ghost, status, source]);
 
   useEffect(() => {
     const t = three.current;
