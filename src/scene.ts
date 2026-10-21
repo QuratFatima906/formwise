@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BuildingModel, ElementKind, OpeningElement, Vec3 } from './domain/model';
 import { kindOf } from './domain/model';
-import { EPS, openingsOf, roofFaces, storeyBounds, wallLength, wallOutline } from './domain/geometry';
+import { EPS, openingsOf, roofPolygon, storeyBounds, wallLength, wallOutline } from './domain/geometry';
 
 /** Element colours shared by viewport, model tree, legend and summary. */
 export const KIND_COLOR: Record<ElementKind, string> = {
@@ -111,21 +111,29 @@ export function buildBuilding(m: BuildingModel, opts: { ghost?: OpeningElement |
     }
   }
 
-  const { faces } = roofFaces(m);
   for (const e of Object.values(m.elements)) {
     if (e.type !== 'roof') continue;
-    const p = faces[e.face];
+    const p = roofPolygon(m, e);
     if (!p) continue;
-    const pos: number[] = [];
-    for (let i = 1; i < p.length - 1; i++) for (const q of [p[0]!, p[i]!, p[i + 1]!]) pos.push(...toThree(q).toArray());
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(planarTriangles(p), 3));
     geo.computeVertexNormals();
     group.add(mk(geo, KIND_COLOR.roof, e.id, 'roof', { doubleSide: true }));
   }
 
   for (const e of Object.values(m.elements)) {
     if (e.type !== 'slab' || !(e.thickness > 0)) continue;
+    if (e.polygon) {
+      // Extrude the plan outline down by the thickness in domain space, then
+      // rotate -90° about x, which is exactly the domain → Three.js mapping.
+      const top = Math.max(...e.polygon.map((q) => q[2]));
+      const shape = new THREE.Shape(e.polygon.map(([x, y]) => new THREE.Vector2(x, y)));
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: e.thickness, bevelEnabled: false });
+      geo.translate(0, 0, top - e.thickness);
+      geo.rotateX(-Math.PI / 2);
+      group.add(mk(geo, KIND_COLOR.slab, e.id, 'slab'));
+      continue;
+    }
     const b = storeyBounds(m, e.storeyId);
     if (!b) continue;
     const X = b.x1 - b.x0, Y = b.y1 - b.y0;
@@ -135,6 +143,23 @@ export function buildBuilding(m: BuildingModel, opts: { ghost?: OpeningElement |
   }
 
   return { group, parts };
+}
+
+/** Triangulates a planar 3D polygon (any winding, may be concave) into Three.js positions. */
+function planarTriangles(p: Vec3[]): number[] {
+  const pts = p.map(toThree);
+  const n = new THREE.Vector3();
+  pts.forEach((a, i) => {
+    const b = pts[(i + 1) % pts.length]!;
+    n.x += (a.y - b.y) * (a.z + b.z);
+    n.y += (a.z - b.z) * (a.x + b.x);
+    n.z += (a.x - b.x) * (a.y + b.y);
+  });
+  n.normalize();
+  const u = new THREE.Vector3().subVectors(pts[1]!, pts[0]!).normalize();
+  const v = new THREE.Vector3().crossVectors(n, u);
+  const flat = pts.map((q) => new THREE.Vector2(q.clone().sub(pts[0]!).dot(u), q.clone().sub(pts[0]!).dot(v)));
+  return THREE.ShapeUtils.triangulateShape(flat, []).flatMap((tri) => tri.flatMap((i) => pts[i]!.toArray()));
 }
 
 const tmp = new THREE.Color();

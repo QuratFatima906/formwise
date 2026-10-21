@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { BuildingModel, OpeningElement, WallElement } from './model';
-import { sampleHouse } from './model';
-import { envelopeArea, heatLossSummary, polygonArea2, roofFaces, wallAreas, wallLength, wallOutline } from './geometry';
+import type { BuildingModel, OpeningElement, RoofElement, SlabElement, WallElement } from './model';
+import { editableFields, sampleHouse } from './model';
+import { envelopeArea, heatLossSummary, polygonArea2, roofEave, roofFaces, wallAreas, wallLength, wallOutline } from './geometry';
 import { proposeEdit, validate } from './validate';
 
 const wall = (over: Partial<WallElement> = {}): WallElement => ({
@@ -139,5 +139,42 @@ describe('wallOutline', () => {
     const { outer, holes } = wallOutline(wall(), [opening({ offset: 4.5 })]);
     expect(holes).toEqual([]);
     expect(polygonArea2(outer)).toBeCloseTo(13.75, 10);
+  });
+});
+
+describe('imported geometry (profiles and polygons)', () => {
+  // 6 m gable wall: eaves at 3 m, ridge at 5 m → 6 × 3 + 6 × 2 / 2 = 24 m².
+  const gable = wall({ end: [6, 0, 0], height: 3, profile: [[0, 0], [6, 0], [6, 3], [3, 5], [0, 3]] });
+
+  it('uses the profile area as gross wall area', () => {
+    expect(wallAreas(model(gable), gable).gross).toBeCloseTo(24, 10);
+    expect(wallAreas(model(gable, opening()), gable).net).toBeCloseTo(24 - 1.68, 10);
+  });
+
+  it('notches a door into the profile bottom edge and holes everything else', () => {
+    const door = opening({ id: 'D1', openingType: 'door', offset: 2, sillHeight: 0, width: 1, height: 2.1 });
+    const top = opening({ id: 'O2', offset: 4, sillHeight: 1.6, width: 1, height: 1.4 }); // reaches the 3 m clear height
+    const { outer, holes } = wallOutline(gable, [door, top]);
+    expect(outer.slice(0, 6)).toEqual([[0, 0], [2, 0], [2, 2.1], [3, 2.1], [3, 0], [6, 0]]);
+    expect(holes).toHaveLength(1);
+    const solid = polygonArea2(outer) - polygonArea2(holes[0]!);
+    expect(solid).toBeCloseTo(24 - 2.1 - 1.4, 10);
+  });
+
+  it('makes a profiled wall height read-only and skips storey alignment for it', () => {
+    expect(editableFields(gable)).toEqual(['thickness', 'uValue']);
+    expect(editableFields(wall())).toEqual(['height', 'thickness', 'uValue']);
+    const short = { ...gable, id: 'W2', height: 2 };
+    expect(validate(model(gable, short))).toEqual([]);
+  });
+
+  it('uses explicit roof and slab polygons for areas', () => {
+    // 4 × 5 m roof plane rising 3 m over its 4 m run → slope 5 m → 25 m².
+    const roof: RoofElement = { id: 'R1', type: 'roof', storeyId: 'S0', name: 'Roof', face: 'S', thickness: 0.2, pitch: 36.87, uValue: 1, polygon: [[0, 0, 0], [5, 0, 0], [5, 4, 3], [0, 4, 3]] };
+    const slab: SlabElement = { id: 'G1', type: 'slab', storeyId: 'S0', name: 'Ground', thickness: 0.2, uValue: 1, polygon: [[0, 0, 0], [4, 0, 0], [4, 2, 0], [2, 2, 0], [2, 4, 0], [0, 4, 0]] };
+    const m = { ...model(wall()), elements: { ...model(wall()).elements, R1: roof, G1: slab } };
+    expect(envelopeArea(m, roof)).toBeCloseTo(25, 10);
+    expect(roofEave(m, roof)).toBe(0);
+    expect(envelopeArea(m, slab)).toBeCloseTo(12, 10); // L-shape: 16 − 4
   });
 });

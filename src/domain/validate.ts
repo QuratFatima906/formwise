@@ -100,7 +100,8 @@ function checkPlacement(o: OpeningElement, w: WallElement, add: Add) {
 }
 
 function checkStoreyLevels(m: BuildingModel, els: BuildingElement[], add: Add) {
-  const wallsOf = (id: string) => els.filter((e): e is WallElement => e.type === 'wall' && e.storeyId === id);
+  // Imported (profiled) walls follow the source geometry, not storey alignment.
+  const wallsOf = (id: string) => els.filter((e): e is WallElement => e.type === 'wall' && e.storeyId === id && !e.profile);
   m.storeys.forEach((s, i) => {
     const ws = wallsOf(s.id);
     if (!ws.length) return;
