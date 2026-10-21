@@ -37,7 +37,8 @@ No backend, account, API key or network service is needed. The bundled sample ho
 6. **Add opening** on the wall, then delete it again.
 7. **Save** (⌘S / Ctrl+S), reload the page: the model is restored.
 8. **Export** glTF + CSV + JSON; the summary totals equal the Heat-loss summary panel.
-9. Show `src/domain/domain.test.ts` and the H_T hand calculation for the sample (476.93 W/K).
+9. **Export → Project file**, change something, then **Open…** the file: the confirmation shows its contents, and replacing restores it.
+10. Show `src/domain/domain.test.ts` and the H_T hand calculation for the sample (476.93 W/K).
 
 ## Architecture
 
@@ -74,9 +75,24 @@ Data flow — the domain model is canonical:
 
 | | |
 | --- | --- |
-| **Implemented** | One deterministic two-storey fixture; orbit/pan/zoom/fit; hover + selection from viewport and tree; inspector edits for walls, openings, roof faces, slab; add/delete openings with real wall cutouts; validation panel (click to select); H_T summary; save/reload; glTF/CSV/JSON export |
+| **Implemented** | One deterministic two-storey fixture; orbit/pan/zoom/fit; hover + selection from viewport and tree; inspector edits for walls, openings, roof faces, slab; add/delete openings with real wall cutouts; validation panel (click to select); H_T summary; save/reload; open project file; glTF/CSV/JSON/project export |
 | **Simplified** | Persistence is **this browser's localStorage only**: it survives reloads, not other browsers or devices, and there is no backend yet. Roof geometry is derived (hipped, ridge along x) and only its thickness/U-value are editable. Wall endpoints and footprint are not editable. |
-| **Not built (future)** | CityJSON/LOD2 import, facade-photo window detection, IFC export, undo/redo, 2D plan view, multi-user editing, certified energy calculations |
+| **Not built (future)** | CityJSON/LOD2 import (in progress), facade-photo window detection, IFC export, undo/redo, 2D plan view, multi-user editing, certified energy calculations |
+
+## Opening files
+
+**Open…** accepts **Formwise project files only** (`.formwise.json`, written by Export → Project file). Every file passes these checks in order, and the first failure is shown in the Open dialog:
+
+| Check | Rule |
+| --- | --- |
+| Extension | name ends in `.json` |
+| MIME type | empty (unknown) or `application/json` / `text/json` |
+| Size | 1 byte – **1 MB** (1,048,576 bytes), checked before the file is read |
+| Encoding | strict UTF-8 (invalid bytes are rejected, not replaced) |
+| Format | JSON object with `"format": "formwise.project"`, `"version": 1` |
+| Model | every field present with the right type, element IDs match their keys, storeys exist, 1–2000 elements |
+
+Geometry problems (e.g. an opening past its wall) don't block opening; they are counted in the dialog and listed in the Validation panel. Opening replaces the current model only after you confirm, and nothing is saved until you press Save.
 
 ## Inspecting exports
 

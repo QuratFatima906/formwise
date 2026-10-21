@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BuildingModel, ElementKind } from './domain/model';
 import { kindOf } from './domain/model';
 import { heatLossSummary, openingsOf, storeyBounds } from './domain/geometry';
@@ -9,15 +9,25 @@ import { Viewport, type ViewportApi } from './Viewport';
 import { Inspector } from './Inspector';
 import { BottomPanel } from './BottomPanel';
 import { ExportDialog } from './ExportDialog';
+import { ImportDialog } from './ImportDialog';
+import { ACCEPT, readImportFile, type ImportResult } from './importFile';
 
 export function App() {
   const model = useEditor((s) => s.model);
   const selectedId = useEditor((s) => s.selectedId);
   const draft = useEditor((s) => s.draft);
   const saved = useEditor((s) => s.saved);
+  const source = useEditor((s) => s.source);
   const exportOpen = useEditor((s) => s.exportOpen);
   const d = useEditor(currentDraft);
   const viewport = useRef<ViewportApi>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [opening, setOpening] = useState<{ name: string; result: ImportResult | null } | null>(null);
+  const openFile = async (file: File) => {
+    setOpening({ name: file.name, result: null });
+    const result = await readImportFile(file);
+    setOpening((o) => (o?.name === file.name ? { name: file.name, result } : o));
+  };
   // The viewport previews a valid draft; an invalid one shows the last valid model plus a ghost outline.
   const view = d && !d.blocked ? d.candidate : model;
   const preview = draft && d?.dirty ? d : null;
@@ -50,12 +60,24 @@ export function App() {
           <div className="brand"><span className="brand-mark" />Formwise</div>
           <span className="divider" />
           <span style={{ fontWeight: 500 }}>{model.name}</span>
-          <span className="tag">{saved ? 'Stored in this browser' : 'Bundled sample'}</span>
+          <span className="tag">{source}</span>
           <SaveStatus />
           <span className="grow" />
           <button className="text-btn" style={{ fontSize: 12 }} onClick={useEditor.getState().resetToSample} title="Replace the current model with the bundled sample (not saved until you save)">
             Reset to sample
           </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept={ACCEPT}
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void openFile(f);
+            }}
+          />
+          <button className="btn" onClick={() => fileInput.current?.click()} title="Open a Formwise project file (.formwise.json, max 1 MB)">Open…</button>
           <SaveButton />
           <button className="btn primary" onClick={() => useEditor.getState().setExportOpen(true)}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" /></svg>
@@ -82,6 +104,7 @@ export function App() {
         </div>
         <StatusBar />
         {exportOpen && <ExportDialog />}
+        {opening && <ImportDialog fileName={opening.name} result={opening.result} onClose={() => setOpening(null)} />}
       </div>
       <div className="narrow-notice">
         <div style={{ maxWidth: 360 }}>
@@ -192,6 +215,7 @@ function ModelTree() {
 }
 
 function BuildingOverview({ model }: { model: BuildingModel }) {
+  const source = useEditor((s) => s.source);
   const els = Object.values(model.elements);
   const count = (k: ElementKind) => els.filter((e) => kindOf(e) === k).length;
   const b = storeyBounds(model, model.storeys[0]!.id);
@@ -210,7 +234,7 @@ function BuildingOverview({ model }: { model: BuildingModel }) {
       <div className="insp-head">
         <div className="eyebrow">Building</div>
         <div className="insp-title">{model.name}</div>
-        <div className="insp-sub">{model.storeys.length} storeys · hipped roof · bundled fixture</div>
+        <div className="insp-sub">{model.storeys.length} storey{model.storeys.length > 1 ? 's' : ''} · {source}</div>
       </div>
       <div style={{ padding: '8px 0' }}>
         {rows.map(([k, v]) => <div key={k} className="kv" style={{ padding: '4px 14px' }}><span>{k}</span><span className="value">{v}</span></div>)}
