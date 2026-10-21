@@ -37,3 +37,11 @@ The production main chunk is ~840 KB before gzip, mostly Three.js. `GLTFExporter
 ## 9. Strict file input, 1 MB cap
 
 Open… accepts only Formwise project files (`{"format": "formwise.project", "version": 1, "model": …}`). The picker's `accept` attribute is a hint users can bypass, so `checkFileMeta()` enforces extension, MIME type and size (≤ 1 MB, checked before reading). `parseImportBytes()` then requires strict UTF-8, JSON, the known format/version, and `parseModel()`'s exact shape (now also checking unique storey IDs and that every element's storey exists), with 1–2000 elements. 1 MB is about 100× the sample project. Raise it with a measured need. Unknown versions are rejected rather than guessed. CityJSON follows as a separate importer behind the same gate.
+
+## 10. CityJSON import maps onto the existing model
+
+Rather than a second geometry model, LOD2 surfaces map onto existing element types, with three optional fields: a wall `profile` (gable outline; `height` keeps meaning the clear rectangle openings must fit under, so opening validation is unchanged), and roof and slab `polygon`s. The bundled sample uses none of them, so its values and tests can't drift.
+
+CityJSON does not mandate ring winding, so orientation is decided once per building: the divergence-theorem volume Σ(c·n)/6 is positive for outward normals; if it is negative, all normals are flipped. This is more robust than per-wall heuristics (e.g. "faces away from the centroid"), which fail on L-shaped plans.
+
+Deliberate limits, all rejected with a message rather than approximated: one building per file, no inner rings, walls within 10° of vertical, LOD ≥ 2. U-values and thicknesses are defaults and the UI says so. The bundled CityJSON sample is synthetic (CC0) because redistribution terms for real datasets weren't verified.

@@ -53,6 +53,8 @@ src/scene.ts       domain model → Three.js meshes (the only Z-up → Y-up conv
 src/Viewport.tsx   renderer, OrbitControls, picking, on-demand rendering
 src/App.tsx, Inspector.tsx, BottomPanel.tsx, ExportDialog.tsx   UI
 src/persistence.ts localStorage save/load with shape validation
+src/importFile.ts  strict file gate (size, type, UTF-8, format) for Open…
+src/cityjson.ts    CityJSON LOD2 → domain model
 src/export.ts      glTF (GLTFExporter), CSV, JSON
 ```
 
@@ -75,13 +77,13 @@ Data flow — the domain model is canonical:
 
 | | |
 | --- | --- |
-| **Implemented** | One deterministic two-storey fixture; orbit/pan/zoom/fit; hover + selection from viewport and tree; inspector edits for walls, openings, roof faces, slab; add/delete openings with real wall cutouts; validation panel (click to select); H_T summary; save/reload; open project file; glTF/CSV/JSON/project export |
+| **Implemented** | One deterministic two-storey fixture; orbit/pan/zoom/fit; hover + selection from viewport and tree; inspector edits for walls, openings, roof faces, slab; add/delete openings with real wall cutouts; validation panel (click to select); H_T summary; save/reload; open project files and CityJSON LOD2; glTF/CSV/JSON/project export |
 | **Simplified** | Persistence is **this browser's localStorage only**: it survives reloads, not other browsers or devices, and there is no backend yet. Roof geometry is derived (hipped, ridge along x) and only its thickness/U-value are editable. Wall endpoints and footprint are not editable. |
-| **Not built (future)** | CityJSON/LOD2 import (in progress), facade-photo window detection, IFC export, undo/redo, 2D plan view, multi-user editing, certified energy calculations |
+| **Not built (future)** | facade-photo window detection, IFC export, undo/redo, 2D plan view, multi-user editing, certified energy calculations |
 
 ## Opening files
 
-**Open…** accepts **Formwise project files only** (`.formwise.json`, written by Export → Project file). Every file passes these checks in order, and the first failure is shown in the Open dialog:
+**Open…** accepts two formats: **Formwise project files** (`.formwise.json`, written by Export → Project file) and **CityJSON 1.1/2.0 LOD2** (`.city.json`, one building). Every file passes these checks in order, and the first failure is shown in the Open dialog:
 
 | Check | Rule |
 | --- | --- |
@@ -89,8 +91,17 @@ Data flow — the domain model is canonical:
 | MIME type | empty (unknown) or `application/json` / `text/json` |
 | Size | 1 byte – **1 MB** (1,048,576 bytes), checked before the file is read |
 | Encoding | strict UTF-8 (invalid bytes are rejected, not replaced) |
-| Format | JSON object with `"format": "formwise.project"`, `"version": 1` |
-| Model | every field present with the right type, element IDs match their keys, storeys exist, 1–2000 elements |
+| Format | JSON object that is either a project (`"format": "formwise.project"`, `"version": 1`) or CityJSON (`"type": "CityJSON"`, version `1.1`/`2.0`) |
+| Model | project: every field present with the right type, element IDs match their keys, storeys exist. Both: 1–2000 elements |
+
+### CityJSON specifics
+
+- Exactly **one `Building`**; geometry is read from it and its `BuildingPart` children, at the **highest LOD ≥ 2** that has semantic surfaces.
+- `WallSurface` → walls. Rectangles stay plain walls; gables keep their exact outline (`profile`), with the eave as the clear height for new openings. `RoofSurface` → roof faces with computed pitch and compass side. `GroundSurface` → slab. Other surface types (e.g. `ClosureSurface`) are ignored, with a warning.
+- Coordinates are shifted to local metres; the source CRS and offset are kept in `model.origin` and shown in the Open dialog. Geographic (degree) coordinates are rejected.
+- Rejected: CityJSON 1.0 (missing mandatory `transform`), several buildings, LOD < 2, surfaces with inner rings, walls tilted > 10°, out-of-range vertex indices, `GeometryInstance`, `CityJSONFeature` streams.
+- **Thicknesses and U-values are defaults** (walls 1.4, roof 0.9, slab 1.1 W/m²K), because CityJSON doesn't carry them. Review them before trusting H_T.
+- Try it: open `samples/gable-house.city.json` (synthetic CC0 sample: 10 × 8 m gable house; H_T 514.0 W/K with the defaults).
 
 Geometry problems (e.g. an opening past its wall) don't block opening; they are counted in the dialog and listed in the Validation panel. Opening replaces the current model only after you confirm, and nothing is saved until you press Save.
 
@@ -103,6 +114,7 @@ Geometry problems (e.g. an opening past its wall) don't block opening; they are 
 
 - No backend persistence (see `docs/DECISIONS.md`).
 - Openings must be rectangular and lie within one wall.
-- The roof generator assumes a footprint wider in x than in y (true for the sample).
+- The roof generator for the bundled sample assumes a footprint wider in x than in y. Imported roofs use their own polygons.
+- CityJSON: one building per file, no holes in surfaces, and default U-values; see above.
 - The main JS chunk is ~840 KB minified (before gzip), mostly Three.js; not yet code-split.
 - Performance has not been measured beyond "responsive on a laptop" for the 26-element sample.
