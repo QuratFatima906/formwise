@@ -4,18 +4,30 @@ import { kindOf } from './domain/model';
 import { heatLossSummary, openingsOf, storeyBounds } from './domain/geometry';
 import { f2, validate } from './domain/validate';
 import { KIND_COLOR, ACCENT } from './scene';
-import { useEditor } from './store';
+import { currentDraft, useEditor } from './store';
 import { Viewport, type ViewportApi } from './Viewport';
+import { Inspector } from './Inspector';
+import { BottomPanel } from './BottomPanel';
 
 export function App() {
   const model = useEditor((s) => s.model);
+  const selectedId = useEditor((s) => s.selectedId);
+  const draft = useEditor((s) => s.draft);
+  const d = useEditor(currentDraft);
   const viewport = useRef<ViewportApi>(null);
+  // The viewport previews a valid draft; an invalid one shows the last valid model plus a ghost outline.
+  const view = d && !d.blocked ? d.candidate : model;
+  const preview = draft && d?.dirty ? d : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && e.target.type !== 'checkbox') return;
       if (e.key === 'f' || e.key === 'F') viewport.current?.fit();
-      if (e.key === 'Escape') useEditor.getState().select(null);
+      if (e.key === 'Escape') {
+        const s = useEditor.getState();
+        if (s.draft) s.revert();
+        else s.select(null);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -33,11 +45,19 @@ export function App() {
         <div className="workspace">
           <ModelTree />
           <main className="center">
-            <Viewport ref={viewport} model={model} ghost={null} />
+            <Viewport ref={viewport} model={view} ghost={d?.ghost ?? null}>
+              {preview && (
+                <div className={`preview-pill ${preview.blocked ? 'bad' : 'ok'}`} role="status">
+                  <span className="dot" style={{ background: preview.blocked ? 'var(--error-dot)' : 'var(--accent)' }} />
+                  {preview.blocked ? 'Invalid edit — showing last valid geometry' : 'Previewing edit — not applied'}
+                </div>
+              )}
+            </Viewport>
+            <BottomPanel />
           </main>
           <aside className="panel panel-right" data-screen-label="Inspector">
             <div className="panel-head"><span className="eyebrow">Inspector</span></div>
-            <BuildingOverview model={model} />
+            {selectedId || draft ? <Inspector /> : <BuildingOverview model={model} />}
           </aside>
         </div>
         <StatusBar />
@@ -183,13 +203,16 @@ function StatusBar() {
   const model = useEditor((s) => s.model);
   const selectedId = useEditor((s) => s.selectedId);
   const hoverId = useEditor((s) => s.hoverId);
-  const sel = selectedId ? model.elements[selectedId] : undefined;
+  const draft = useEditor((s) => s.draft);
+  const note = useEditor((s) => s.note);
+  const sel = draft?.base ?? (selectedId ? model.elements[selectedId] : undefined);
   return (
     <footer className="statusbar">
       <span style={{ color: 'var(--text)' }}>{sel ? `Selected: ${sel.id} · ${sel.name}` : 'No selection'}</span>
       {hoverId && hoverId !== selectedId && <span className="muted">Hover: {hoverId}</span>}
+      {note && <span className={`tone-${note.tone}`} role="status">{note.text}</span>}
       <span className="grow" />
-      <span>Drag: orbit · Right-drag / Shift: pan · Scroll: zoom · F: fit · Esc: deselect</span>
+      <span>Drag: orbit · Right-drag / Shift: pan · Scroll: zoom · F: fit · Esc: revert / deselect</span>
       <span className="sep" />
       <span className="mono" style={{ fontSize: 11 }}>m · m² · W/m²K · W/K</span>
     </footer>

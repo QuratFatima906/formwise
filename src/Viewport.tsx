@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { BuildingModel, OpeningElement } from './domain/model';
@@ -15,6 +15,7 @@ interface Props {
   model: BuildingModel;
   ghost: OpeningElement | null;
   ref?: Ref<ViewportApi>;
+  children?: ReactNode;
 }
 
 const HOME_TARGET = new THREE.Vector3(5, 3.1, -4);
@@ -31,7 +32,7 @@ interface Three {
   pickables: THREE.Object3D[];
 }
 
-export function Viewport({ model, ghost, ref }: Props) {
+export function Viewport({ model, ghost, ref, children }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const compass = useRef<HTMLDivElement>(null);
   const three = useRef<Three | null>(null);
@@ -237,6 +238,7 @@ export function Viewport({ model, ghost, ref }: Props) {
       <div className="scale-cue mono">
         <span className="scale-bar" />Grid 1.00 m<span>·</span>Perspective
       </div>
+      {children}
       {status === 'loading' && <div className="viewport-overlay"><span className="spinner" /> Loading 3D viewport…</div>}
       {status === 'error' && (
         <div className="viewport-overlay">
