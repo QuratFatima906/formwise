@@ -8,11 +8,14 @@ import { currentDraft, useEditor } from './store';
 import { Viewport, type ViewportApi } from './Viewport';
 import { Inspector } from './Inspector';
 import { BottomPanel } from './BottomPanel';
+import { ExportDialog } from './ExportDialog';
 
 export function App() {
   const model = useEditor((s) => s.model);
   const selectedId = useEditor((s) => s.selectedId);
   const draft = useEditor((s) => s.draft);
+  const saved = useEditor((s) => s.saved);
+  const exportOpen = useEditor((s) => s.exportOpen);
   const d = useEditor(currentDraft);
   const viewport = useRef<ViewportApi>(null);
   // The viewport previews a valid draft; an invalid one shows the last valid model plus a ghost outline.
@@ -21,13 +24,20 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const s = useEditor.getState();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        s.save();
+        return;
+      }
       if (e.target instanceof HTMLInputElement && e.target.type !== 'checkbox') return;
-      if (e.key === 'f' || e.key === 'F') viewport.current?.fit();
       if (e.key === 'Escape') {
-        const s = useEditor.getState();
-        if (s.draft) s.revert();
+        if (s.exportOpen) s.setExportOpen(false);
+        else if (s.draft) s.revert();
         else s.select(null);
       }
+      if (s.exportOpen) return;
+      if (e.key === 'f' || e.key === 'F') viewport.current?.fit();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -40,7 +50,17 @@ export function App() {
           <div className="brand"><span className="brand-mark" />Formwise</div>
           <span className="divider" />
           <span style={{ fontWeight: 500 }}>{model.name}</span>
-          <span className="tag">Bundled sample</span>
+          <span className="tag">{saved ? 'Stored in this browser' : 'Bundled sample'}</span>
+          <SaveStatus />
+          <span className="grow" />
+          <button className="text-btn" style={{ fontSize: 12 }} onClick={useEditor.getState().resetToSample} title="Replace the current model with the bundled sample (not saved until you save)">
+            Reset to sample
+          </button>
+          <SaveButton />
+          <button className="btn primary" onClick={() => useEditor.getState().setExportOpen(true)}>
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" /></svg>
+            Export
+          </button>
         </header>
         <div className="workspace">
           <ModelTree />
@@ -53,7 +73,7 @@ export function App() {
                 </div>
               )}
             </Viewport>
-            <BottomPanel />
+            <BottomPanel baseline={saved ?? undefined} />
           </main>
           <aside className="panel panel-right" data-screen-label="Inspector">
             <div className="panel-head"><span className="eyebrow">Inspector</span></div>
@@ -61,6 +81,7 @@ export function App() {
           </aside>
         </div>
         <StatusBar />
+        {exportOpen && <ExportDialog />}
       </div>
       <div className="narrow-notice">
         <div style={{ maxWidth: 360 }}>
@@ -196,6 +217,35 @@ function BuildingOverview({ model }: { model: BuildingModel }) {
       </div>
       <div className="hint-box">Select a wall, opening, roof face or slab in the viewport or model tree to inspect and edit it.</div>
     </div>
+  );
+}
+
+function SaveStatus() {
+  const model = useEditor((s) => s.model);
+  const saved = useEditor((s) => s.saved);
+  const savedAt = useEditor((s) => s.savedAt);
+  const saveError = useEditor((s) => s.saveError);
+  const save = useEditor((s) => s.save);
+  const [label, tone, dot] = saveError
+    ? ['Save failed', 'var(--error)', 'var(--error-dot)']
+    : model === saved
+      ? [savedAt ? `Saved ${savedAt}` : 'Saved', 'var(--muted)', 'var(--ok-dot)']
+      : [saved ? 'Unsaved changes' : 'Not saved yet', 'var(--warn)', 'var(--warn-dot)'];
+  return (
+    <div className="save-status" style={{ color: tone }} title={saveError} role="status">
+      <span className="dot" style={{ background: dot }} />
+      {label}
+      {saveError && <button className="text-btn" style={{ fontSize: 12, textDecoration: 'underline' }} onClick={save}>Retry</button>}
+    </div>
+  );
+}
+
+function SaveButton() {
+  const clean = useEditor((s) => s.model === s.saved);
+  return (
+    <button className="btn" onClick={useEditor.getState().save} disabled={clean} title={clean ? 'No unsaved changes' : 'Save to this browser (⌘S)'}>
+      Save <span className="kbd">⌘S</span>
+    </button>
   );
 }
 

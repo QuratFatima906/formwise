@@ -2,12 +2,18 @@ import { create } from 'zustand';
 import type { BuildingModel, NumericField, OpeningType } from './domain/model';
 import { sampleHouse } from './domain/model';
 import { describeChanges, evaluateDraft, newOpeningFor, type Draft } from './draft';
+import { loadProject, saveProject } from './persistence';
 
 export type NavMode = 'orbit' | 'pan';
 export type Tone = 'ok' | 'warn' | 'error';
 
 interface EditorState {
   model: BuildingModel;
+  /** Last model written to storage; `model === saved` means no unsaved changes. */
+  saved: BuildingModel | null;
+  savedAt: string;
+  saveError: string;
+  exportOpen: boolean;
   selectedId: string | null;
   hoverId: string | null;
   draft: Draft | null;
@@ -30,15 +36,25 @@ interface EditorState {
   setConfirmDelete: (v: boolean) => void;
   deleteOpening: () => void;
   flash: (text: string, tone: Tone) => void;
+  save: () => void;
+  resetToSample: () => void;
+  setExportOpen: (open: boolean) => void;
   setNav: (nav: NavMode) => void;
   toggleNode: (key: string, current: boolean) => void;
   toggleBottom: () => void;
 }
 
 let noteTimer: ReturnType<typeof setTimeout> | undefined;
+const startup = loadProject();
+const initialModel = startup.status === 'loaded' ? startup.model : sampleHouse();
+const clock = () => new Date().toTimeString().slice(0, 5);
 
 export const useEditor = create<EditorState>()((set, get) => ({
-  model: sampleHouse(),
+  model: initialModel,
+  saved: startup.status === 'loaded' ? initialModel : null,
+  savedAt: '',
+  saveError: '',
+  exportOpen: false,
   selectedId: null,
   hoverId: null,
   draft: null,
@@ -118,6 +134,25 @@ export const useEditor = create<EditorState>()((set, get) => ({
     set({ note: { text, tone } });
     noteTimer = setTimeout(() => set({ note: null }), 5000);
   },
+  save: () => {
+    const { model, saved } = get();
+    if (model === saved) return;
+    try {
+      saveProject(model);
+    } catch (e) {
+      const saveError = `Browser storage refused the save: ${(e as Error).message}`;
+      set({ saveError });
+      get().flash('Save failed — your changes are still in this tab.', 'error');
+      return;
+    }
+    set({ saved: model, savedAt: clock(), saveError: '' });
+    get().flash(`Project saved in this browser at ${clock()}.`, 'ok');
+  },
+  resetToSample: () => {
+    set({ model: sampleHouse(), draft: null, selectedId: null, lastApplied: null, confirmDelete: false });
+    get().flash('Loaded the bundled sample. Save to replace the stored project.', 'warn');
+  },
+  setExportOpen: (exportOpen) => set({ exportOpen }),
   setNav: (nav) => set({ nav }),
   toggleNode: (key, current) => set((s) => ({ expanded: { ...s.expanded, [key]: !current } })),
   toggleBottom: () => set((s) => ({ bottomOpen: !s.bottomOpen })),
@@ -129,4 +164,8 @@ export function currentDraft(s: Pick<EditorState, 'model' | 'draft'>) {
   if (!s.draft) return null;
   if (memo?.model !== s.model || memo.draft !== s.draft) memo = { model: s.model, draft: s.draft, result: evaluateDraft(s.model, s.draft) };
   return memo.result;
+}
+
+if (startup.status === 'corrupt' || startup.status === 'unavailable') {
+  useEditor.getState().flash(`Could not load the saved project (${startup.reason}) — showing the bundled sample.`, 'error');
 }
