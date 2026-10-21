@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function ImportDialog({ fileName, result, onClose }: Props) {
-  const unsaved = useEditor((s) => s.model !== s.saved);
+  const unsaved = useEditor((s) => s.model !== s.saved && s.model !== s.loaded);
   const confirm = () => {
     if (result?.ok) useEditor.getState().importModel(result.model, fileName);
     onClose();

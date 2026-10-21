@@ -11,6 +11,8 @@ interface EditorState {
   model: BuildingModel;
   /** Last model written to storage; `model === saved` means no unsaved changes. */
   saved: BuildingModel | null;
+  /** Model as last loaded (startup, sample reset or file); unchanged since then = nothing to lose. */
+  loaded: BuildingModel;
   savedAt: string;
   saveError: string;
   /** Where the current model came from, shown next to the project name. */
@@ -54,6 +56,7 @@ const clock = () => new Date().toTimeString().slice(0, 5);
 
 export const useEditor = create<EditorState>()((set, get) => ({
   model: initialModel,
+  loaded: initialModel,
   saved: startup.status === 'loaded' ? initialModel : null,
   savedAt: '',
   saveError: '',
@@ -153,11 +156,12 @@ export const useEditor = create<EditorState>()((set, get) => ({
     get().flash(`Project saved in this browser at ${clock()}.`, 'ok');
   },
   resetToSample: () => {
-    set({ model: sampleHouse(), draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: 'Bundled sample' });
+    const model = sampleHouse();
+    set({ model, loaded: model, draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: 'Bundled sample' });
     get().flash('Loaded the bundled sample. Save to replace the stored project.', 'warn');
   },
   importModel: (model, fileName) => {
-    set({ model, draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: `Imported · ${fileName}` });
+    set({ model, loaded: model, draft: null, selectedId: null, hoverId: null, lastApplied: null, confirmDelete: false, expanded: {}, source: `Imported · ${fileName}` });
     get().flash(`Opened ${fileName}. Save to keep it in this browser.`, 'ok');
   },
   setExportOpen: (exportOpen) => set({ exportOpen }),
