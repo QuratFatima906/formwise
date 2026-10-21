@@ -37,7 +37,6 @@ export function Viewport({ model, ghost, ref, children }: Props) {
   const compass = useRef<HTMLDivElement>(null);
   const three = useRef<Three | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [error, setError] = useState('');
   const selectedId = useEditor((s) => s.selectedId);
   const hoverId = useEditor((s) => s.hoverId);
   const nav = useEditor((s) => s.nav);
@@ -65,8 +64,9 @@ export function Viewport({ model, ghost, ref, children }: Props) {
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     } catch {
+      // Reports whether the external WebGL context could be created; runs once.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('error');
-      setError('WebGL is not available in this browser.');
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -244,7 +244,7 @@ export function Viewport({ model, ghost, ref, children }: Props) {
         <div className="viewport-overlay">
           <div className="error-card">
             <div className="error-title">3D viewport could not start</div>
-            <div>{error}</div>
+            <div>WebGL is not available in this browser.</div>
             <div className="muted">The model tree, inspector and summary still work.</div>
           </div>
         </div>
